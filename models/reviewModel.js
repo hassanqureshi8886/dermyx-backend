@@ -4,6 +4,11 @@ const reviewSchema = new mongoose.Schema({
     product: { type: mongoose.Schema.Types.ObjectId, ref: "product", required: true, index: true },
     user: { type: String, ref: "user", default: '' },
     name: { type: String, required: true },
+    title: { type: String, default: '' },
+    // Kept for order follow-up and admin reference; never returned publicly.
+    email: { type: String, default: '' },
+    // Photo of the product the customer actually received.
+    image: { type: String, default: '' },
     rating: { type: Number, required: true, min: 1, max: 5 },
     comment: { type: String, required: true, maxlength: 1000 },
     // Set when the reviewer has an order containing this product

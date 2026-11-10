@@ -1,9 +1,11 @@
 import mongoose from "mongoose"
+import { v2 as cloudinary } from "cloudinary"
 import reviewModel from "../models/reviewModel.js"
 import productModel from "../models/productModel.js"
 import orderModel from "../models/orderModel.js"
 
 const validId = (id) => mongoose.Types.ObjectId.isValid(id)
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
 // product.rating / product.reviewCount used to be typed by hand in the admin
 // Add form; they are now derived from the real review rows.
@@ -31,7 +33,7 @@ const hasPurchased = async (userId, productId) => {
 const addReview = async (req, res) => {
     try {
         const { userId } = req.body
-        const { productId, rating, comment } = req.body
+        const { productId, rating, comment, title } = req.body
 
         if (!validId(productId)) {
             return res.json({ success: false, message: "Invalid product" })
@@ -49,9 +51,16 @@ const addReview = async (req, res) => {
         }
 
         const displayName = String(req.body.name || "").trim().slice(0, 60)
+        const reviewTitle = String(title || "").trim().slice(0, 100)
         // Guests have no account name to fall back on, so they must give one.
-        if (!userId && !displayName) {
+        if (!displayName) {
             return res.json({ success: false, message: "Please add the name to show on your review" })
+        }
+
+        // The email is for order follow-up, so it is required but never shown.
+        const email = String(req.body.email || "").trim().toLowerCase()
+        if (!EMAIL_PATTERN.test(email) || email.length > 120) {
+            return res.json({ success: false, message: "Please add a valid email address" })
         }
 
         const product = await productModel.findById(productId)
@@ -64,10 +73,21 @@ const addReview = async (req, res) => {
         const existing = userId ? await reviewModel.findOne({ product: productId, user: userId }) : null
         const verified = await hasPurchased(userId, productId)
 
+        // Optional: the photo the customer took of what arrived.
+        let imageUrl = ""
+        if (req.file) {
+            const result = await cloudinary.uploader.upload(req.file.path, { resource_type: "image" })
+            imageUrl = result.secure_url
+        }
+
         let saved
         if (existing) {
             existing.rating = score
             existing.comment = text
+            existing.name = displayName
+            existing.title = reviewTitle
+            existing.email = email
+            if (imageUrl) existing.image = imageUrl
             existing.verified = verified
             await existing.save()
             saved = existing
@@ -75,7 +95,10 @@ const addReview = async (req, res) => {
             saved = await reviewModel.create({
                 product: productId,
                 user: userId,
-                name: displayName || "Customer",
+                name: displayName,
+                title: reviewTitle,
+                email,
+                image: imageUrl,
                 rating: score,
                 comment: text,
                 verified
@@ -119,7 +142,7 @@ const productReviews = async (req, res) => {
 
         res.json({
             success: true,
-            reviews: reviews.map(({ helpfulBy, ...rest }) => rest),
+            reviews: reviews.map(({ helpfulBy, email, ...rest }) => rest),
             summary: { average, total, breakdown }
         })
 
@@ -136,14 +159,15 @@ const latestReviews = async (req, res) => {
         const reviews = await reviewModel.find({ rating: { $gte: 4 } })
             .sort({ helpful: -1, createdAt: -1 })
             .limit(limit)
-            .populate("product", "name")
+            .populate("product", "name image")
             .lean()
 
         res.json({
             success: true,
-            reviews: reviews.map(({ helpfulBy, product, ...rest }) => ({
+            reviews: reviews.map(({ helpfulBy, email, product, ...rest }) => ({
                 ...rest,
-                productName: product?.name || ""
+                productName: product?.name || "",
+                productImage: product?.image?.[0] || ""
             }))
         })
 
