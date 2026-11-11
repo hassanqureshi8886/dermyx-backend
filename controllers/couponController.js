@@ -156,4 +156,36 @@ const removeCoupon = async (req, res) => {
     }
 }
 
-export { validateCoupon, listCoupons, addCoupon, removeCoupon }
+// Deactivating keeps the code and its redemption history; checkout lookups
+// only ever see active codes, so a deactivated code stops working immediately.
+const setCouponStatus = async (req, res) => {
+    try {
+        const codeUpper = normalizeCode(req.body.code).toUpperCase()
+        if (!codeUpper) {
+            return res.json({ success: false, message: 'Discount code is required.' })
+        }
+        const { active } = req.body
+        if (typeof active !== 'boolean') {
+            return res.json({ success: false, message: 'Status must be true or false.' })
+        }
+
+        const updated = await couponModel.findOneAndUpdate(
+            { codeUpper },
+            { active },
+            { new: true }
+        )
+        if (!updated) {
+            return res.json({ success: false, message: 'That discount code no longer exists.' })
+        }
+        res.json({
+            success: true,
+            message: active ? 'Discount code activated.' : 'Discount code deactivated.',
+            active: updated.active,
+        })
+    } catch (error) {
+        console.log(error)
+        res.json({ success: false, message: error.message })
+    }
+}
+
+export { validateCoupon, listCoupons, addCoupon, removeCoupon, setCouponStatus }
