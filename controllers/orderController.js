@@ -424,7 +424,7 @@ const placeOrder = async (req,res) => {
             showTracking: Boolean(userId),
         })
 
-        res.json({success:true,message:"Order Placed",orderId:newOrder._id})
+        res.json({success:true,message:"Order Placed",orderId:newOrder._id,amount:orderAmount})
 
 
     } catch (error) {
